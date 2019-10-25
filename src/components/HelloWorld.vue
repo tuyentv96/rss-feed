@@ -1,7 +1,8 @@
 <template>
   <div class="hello">
     <div v-for="item in articles" v-bind:key="item.id">
-      <a v-bind:href="item.link">{{item.title}}</a>
+      <!-- <a v-bind:href="item.link">{{item.title}}</a> -->
+      <a v-bind:href="item.link" target="_blank">{{item.title}}</a>
       <el-divider></el-divider>
     </div>
   </div>
