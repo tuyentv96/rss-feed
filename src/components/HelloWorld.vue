@@ -1,7 +1,6 @@
 <template>
   <div class="hello">
     <div v-for="item in articles" v-bind:key="item.id">
-      <h3>{{ item }}</h3>
       <a v-bind:href="item.link">{{item.title}}</a>
       <el-divider></el-divider>
     </div>
@@ -25,47 +24,69 @@ var firebaseConfig = {
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 firebase.analytics();
-let urls = [];
 let Parser = require("rss-parser");
 let parser = new Parser({});
 let articles = [];
 
-function fetchData() {
-  console.log("clicked");
-  var ref = firebase.database().ref("rss/urls");
-  ref.on("value", function(snapshot) {
-    snapshot.forEach(function(childSnapshot) {
-      var childData = childSnapshot.val();
-      urls.push(childData);
-      console.log(childData);
-      (async () => {
-        const data = await fetch(
-          "https://tuyentv-cors.herokuapp.com/" + childData,
-          {
-            mode: "cors"
-          }
-        );
-        const text = await data.text();
-        parser.parseString(text, (err, parsed) => {
-          parsed.items.forEach(function(entry) {
-            console.log(entry.title + ":" + entry.link);
-            articles.push({
-              title: entry.title,
-              link: entry.link
-            });
-          });
-        });
-      })();
+async function listRssUrl() {
+  return new Promise(resolve => {
+    let urls = [];
+    var ref = firebase.database().ref("rss/urls");
+    ref.on("value", function(snapshot) {
+      snapshot.forEach(function(childSnapshot) {
+        var childData = childSnapshot.val();
+        urls.push(childData);
+      });
+      return resolve(urls);
     });
   });
 }
 
-fetchData();
+async function listArticles(urls) {
+  let atrs = await Promise.all(
+    urls.map(async url => {
+      const data = await fetch("https://tuyentv-cors.herokuapp.com/" + url, {
+        mode: "cors"
+      });
+      const text = await data.text();
+      return new Promise(resolve => {
+        parser.parseString(text, (err, parsed) => {
+          let arr = [];
+          parsed.items.forEach(function(entry) {
+            // console.log(entry.title + ":" + entry.link + ":" + entry.pubDate);
+            arr.push({
+              title: entry.title,
+              link: entry.link,
+              pubDate: entry.pubDate
+            });
+          });
+          console.log(arr);
+          return resolve(arr);
+        });
+      });
+    })
+  ).then(r => r.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate)));
+
+  return atrs;
+}
+
+async function RenderFeed() {
+  let u = await listRssUrl();
+  let attr = await listArticles(u);
+  let i;
+  for (i in attr) {
+    articles.push(...attr[i]);
+  }
+  await articles.sort(function(a, b) {
+    return new Date(b.pubDate) - new Date(a.pubDate);
+  });
+
+  console.log(articles);
+  return Promise.resolve(articles);
+}
+
+RenderFeed();
 export default {
-  name: "HelloWorld",
-  props: {
-    msg: String
-  },
   data() {
     return {
       articles: articles
@@ -74,20 +95,3 @@ export default {
 };
 </script>
 
-<!-- Add "scoped" attribute to limit CSS to this component only -->
-<style scoped>
-h3 {
-  margin: 40px 0 0;
-}
-ul {
-  list-style-type: none;
-  padding: 0;
-}
-li {
-  display: inline-block;
-  margin: 0 10px;
-}
-a {
-  color: #42b983;
-}
-</style>
